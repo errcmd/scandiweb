@@ -1,0 +1,3 @@
+local_setup.sh
+.terraform
+.terraform.lock.hcl
