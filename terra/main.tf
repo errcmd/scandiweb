@@ -1,4 +1,8 @@
 terraform {
+  required_version = "= 1.0.9"
+}
+
+terraform {
     backend "s3" {
       bucket               = "errcmd-tfstate"
       region               = "us-east-1"
@@ -215,29 +219,46 @@ resource "aws_lb_listener_rule" "magento_media" {
 }
 
 resource "aws_instance" "magento" {
+  for_each      = aws_subnet.private_subnets
   ami           = data.aws_ami.ubuntu.id
   instance_type = "t2.micro"
+  subnet_id     = aws_subnet.private_subnets[each.key].id
 
   tags = {
     type = "magento"
   }
+  root_block_device {
+    volume_size = 20
+    tags = {
+      type = "magento"
+    }
+  }
+
 }
 
 resource "aws_instance" "varnish" {
+  for_each      = aws_subnet.private_subnets
   ami           = data.aws_ami.ubuntu.id
   instance_type = "t2.micro"
+  subnet_id     = aws_subnet.private_subnets[each.key].id
 
   tags = {
     type = "varnish"
   }
-}
-
-
-resource "aws_instance" "bastion" {
-  ami           = data.aws_ami.ubuntu.id
-  instance_type = "t2.micro"
-
-  tags = {
-    type = "bastion"
+  root_block_device {
+    volume_size = 20
+    tags = {
+      type = "varnish"
+    }
   }
 }
+
+
+#resource "aws_instance" "bastion" {
+#  ami           = data.aws_ami.ubuntu.id
+#  instance_type = "t2.micro"
+#
+#  tags = {
+#    type = "bastion"
+#  }
+#}
