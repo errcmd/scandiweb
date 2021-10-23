@@ -1,0 +1,3 @@
+varnish_version: "7.0"
+varnish_secret: "73a950e6-7a58-4d5f-9fda-b979cb4c4327"
+varnish_default_vcl_template_path: override.vcl.j2

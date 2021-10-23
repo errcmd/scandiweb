@@ -6,3 +6,7 @@ mv terraform /usr/bin/
 #bucket for state exist - assumption
 terraform init
 terraform workspace new dev
+pip3 install boto3
+#ansible [core 2.11.5] is installed via pip under user (not root) - assumption
+ansible-galaxy install -r requirements.yml
+ansible-playbook main.yml -e envir=dev

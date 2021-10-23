@@ -1,0 +1,4 @@
+- name: varnish
+  hosts: varnish
+  roles:
+    - geerlingguy.varnish

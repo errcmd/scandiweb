@@ -1,0 +1,3 @@
+---
+- name: Include play of specific env
+  import_playbook: environments/{{ envir }}/act.yml

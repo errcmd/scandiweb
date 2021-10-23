@@ -1,0 +1,33 @@
+{% if varnish_version is version('4.0', '>=') %}
+vcl 4.1;
+{% endif %}
+
+import directors;
+{% for server in groups['magento'] %}
+backend magento{{loop.index}} {
+    .host = "{{ server }}";
+    .port = "80";
+    .probe = {
+        .url = "/";
+        .timeout = 1s;
+        .interval = 5s;
+        .window = 5;
+        .threshold = 3;
+    }
+}
+{% endfor %}
+
+
+
+sub vcl_init {
+    new bar = directors.round_robin();
+    {% for server in groups['magento'] %}
+    bar.add_backend(magento{{loop.index}});
+    {% endfor %}
+}
+
+
+sub vcl_recv {
+    # send all traffic to the bar director:
+    set req.backend_hint = bar.backend();
+}

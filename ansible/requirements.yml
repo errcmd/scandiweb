@@ -1,0 +1,4 @@
+---
+roles:
+  - name: geerlingguy.varnish
+    version: 3.3.0
