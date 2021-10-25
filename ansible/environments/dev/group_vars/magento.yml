@@ -1,0 +1,46 @@
+ansible_python_interpreter: python3
+php_packages_state: present
+php_default_version_debian: '7.4'
+php_version: '7.4'
+php_versions_install_recommends: true
+php_webserver_daemon: "nginx"
+php_enable_php_fpm: true
+php_fpm_pm_max_children: 75
+php_fpm_pm_start_servers: 2
+php_fpm_pm_min_spare_servers: 2
+php_fpm_pm_max_spare_servers: 5
+php_memory_limit: "1024M"
+php_realpath_cache_size: "10M"
+php_packages_extra:
+  - php7.4-bcmath
+  - php7.4-curl
+  - php7.4-gd
+  - php7.4-intl
+  - php7.4-soap
+  - php7.4-zip
+  - php7.4-mysql
+composer_global_packages:
+  - { name: phpunit/phpunit, release: "9.0.0" }
+mysql_version: '8.0'
+
+mysql_databases:
+   - name: magento
+     collation: utf8_general_ci
+     encoding: utf8
+     replicate: 1
+
+mysql_users:
+   - name: magento
+     host: 127.0.0.1
+     password: vault_usage_is_better
+     priv: magento.*:GRANT,ALL
+
+mysql_replication_master: "{{ inventory_hostname }}"
+mysql_server_id: "{{ groups['magento'].index(inventory_hostname) }}"
+mysql_replication_role: "master"
+mysql_expire_logs_days: "2"
+mysql_max_binlog_size: "50M"
+
+mysql_replication_user:
+     - name: replic
+       password: vault_is_better

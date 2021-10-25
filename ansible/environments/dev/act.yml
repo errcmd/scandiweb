@@ -1,4 +1,28 @@
-- name: varnish
-  hosts: varnish
+#- name: varnish
+#  hosts: varnish
+#  roles:
+#    - geerlingguy.varnish
+
+- name: magento
+  hosts: magento
+  collections:
+    - geerlingguy.php_roles
+    - nginxinc.nginx_core
+  pre_tasks:
+#    - name: Install the official MySQL repo
+#      apt:
+#        deb: https://dev.mysql.com/get/mysql-apt-config_0.8.11-1_all.deb
+#        state: present
+#      when: ansible_os_family == 'Debian'
+#    - name: Override variables for MySQL (Debian)
+#      set_fact:
+#        mysql_packages: ['mysql-server']
+#      when: ansible_os_family == 'Debian'
   roles:
-    - geerlingguy.varnish
+    - name: nginx
+    - name: geerlingguy.php-versions
+    - name: geerlingguy.php
+    - name: geerlingguy.composer
+    - name: damianlewis.mysql
+#    - name: geerlingguy.mysql
+#    - name: geerlingguy.php-mysql
