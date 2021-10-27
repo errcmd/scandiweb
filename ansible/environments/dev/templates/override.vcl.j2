@@ -13,6 +13,7 @@ backend magento{{loop.index}} {
         .interval = 5s;
         .window = 5;
         .threshold = 3;
+        .expected_response = 302;
     }
 }
 {% endfor %}

@@ -155,6 +155,42 @@ resource "aws_security_group" "hardening_ssh" {
   ]
 }
 
+resource "aws_security_group" "hardening_mysql_replication" {
+  name        = "hardening_mysql_replication"
+  vpc_id      = aws_vpc.main.id
+  ingress     = [
+    {
+      description      = "ssh"
+      from_port        = 3306
+      to_port          = 3306
+      protocol         = "tcp"
+      cidr_blocks      = []
+      ipv6_cidr_blocks = []
+      prefix_list_ids  = []
+      security_groups  = []
+      self             = true
+    }
+  ]
+}
+
+resource "aws_security_group" "hardening_elasticsearch_replication" {
+  name        = "hardening_elasticsearch_replication"
+  vpc_id      = aws_vpc.main.id
+  ingress     = [
+    {
+      description      = "ssh"
+      from_port        = 9300
+      to_port          = 9300
+      protocol         = "tcp"
+      cidr_blocks      = []
+      ipv6_cidr_blocks = []
+      prefix_list_ids  = []
+      security_groups  = []
+      self             = true
+    }
+  ]
+}
+
 resource "aws_security_group" "hardening_web" {
   name        = "hardening_web"
   vpc_id      = aws_vpc.main.id
@@ -195,7 +231,7 @@ resource "aws_lb" "application_balancer" {
   name                       = "alb-scandiweb-main"
   internal                   = false
   load_balancer_type         = "application"
-  security_groups            = [aws_security_group.alb_allow_web.id]
+  security_groups            = [aws_security_group.alb_allow_web.id, aws_security_group.egress_all.id]
   subnets                    = [for s in aws_subnet.public_subnets:s.id]
   enable_deletion_protection = false
 
@@ -242,8 +278,13 @@ resource "aws_lb_target_group" "magento" {
   vpc_id     = aws_vpc.main.id
 
   health_check {
-    port     = 80
-    protocol = "HTTP"
+    port                = 80
+    protocol            = "HTTP"
+    interval            = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 2
+    matcher             = "200,302"
   }
 }
 
@@ -254,8 +295,13 @@ resource "aws_lb_target_group" "varnish" {
   vpc_id     = aws_vpc.main.id
 
   health_check {
-    port     = 80
-    protocol = "HTTP"
+    port                = 80
+    protocol            = "HTTP"
+    interval            = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 2
+    matcher             = "200,302"
   }
 }
 
@@ -325,9 +371,9 @@ resource "aws_lb_listener_rule" "magento_media" {
 resource "aws_instance" "magento" {
   for_each               = aws_subnet.private_subnets
   ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t2.micro"
+  instance_type          = "t3.medium"
   subnet_id              = aws_subnet.private_subnets[each.key].id
-  vpc_security_group_ids = [aws_security_group.hardening_web.id, aws_security_group.egress_all.id, aws_security_group.hardening_ssh.id]
+  vpc_security_group_ids = [aws_security_group.hardening_web.id, aws_security_group.egress_all.id, aws_security_group.hardening_ssh.id, aws_security_group.hardening_mysql_replication.id, aws_security_group.hardening_elasticsearch_replication.id]
 
   tags = {
     type = "magento"
@@ -391,4 +437,31 @@ EOF
 resource "aws_eip" "bastion_eip" {
   instance = aws_instance.bastion.id
   vpc      = true
+}
+
+resource "aws_lb_target_group_attachment" "varnish" {
+  for_each               = aws_instance.varnish
+
+  target_group_arn = aws_lb_target_group.varnish.arn
+  target_id        = aws_instance.varnish[each.key].id
+  port             = 80
+}
+
+resource "aws_lb_target_group_attachment" "magento" {
+  for_each               = aws_instance.magento
+
+  target_group_arn = aws_lb_target_group.magento.arn
+  target_id        = aws_instance.magento[each.key].id
+  port             = 80
+}
+
+resource "null_resource" "ansible" {
+  provisioner "local-exec" {
+    command = "ansible-playbook main.yml -e envir=dev -e magento_base_url=$LB --vault-password-file=.vault_pass"
+    interpreter = ["/bin/bash", "-c"]
+    environment = {
+      LB = aws_lb.application_balancer.dns_name
+    }
+    working_dir = format("%s%s", regex("(.+)terra",path.cwd)[0], "ansible")
+  }
 }

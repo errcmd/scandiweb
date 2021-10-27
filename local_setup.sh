@@ -9,4 +9,5 @@ terraform workspace new dev
 pip3 install boto3
 #ansible [core 2.11.5] is installed via pip under user (not root) - assumption
 ansible-galaxy install -r requirements.yml
-ansible-playbook main.yml -e envir=dev
+terraform apply
+ansible-playbook main.yml -e envir=dev --vault-password-file=.vault_pass -e magento_base_url=something.us-east-1.elb.amazonaws.com to

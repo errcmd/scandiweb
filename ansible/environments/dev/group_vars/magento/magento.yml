@@ -1,0 +1,85 @@
+ansible_python_interpreter: python3
+nginx_config_cleanup: true
+nginx_config_cleanup_paths:
+  - directory:
+      - /etc/nginx/conf.d
+    recurse: false
+nginx_config_cleanup_files:
+  - /etc/nginx/conf.d/default.conf
+nginx_config_http_upload_enable: true
+nginx_config_http_upload_src: "{{ playbook_dir }}/files/magento.conf"
+php_packages_state: present
+php_default_version_debian: '7.4'
+php_version: '7.4'
+php_versions_install_recommends: true
+php_webserver_daemon: "nginx"
+php_enable_php_fpm: true
+php_fpm_pm_max_children: 75
+php_fpm_pm_start_servers: 2
+php_fpm_pm_min_spare_servers: 2
+php_fpm_pm_max_spare_servers: 5
+php_memory_limit: "1024M"
+php_realpath_cache_size: "10M"
+php_packages_extra:
+  - php7.4-bcmath
+  - php7.4-curl
+  - php7.4-gd
+  - php7.4-intl
+  - php7.4-soap
+  - php7.4-zip
+  - php7.4-mysql
+composer_global_packages:
+  - { name: phpunit/phpunit, release: "9.0.0" }
+mysql_version: '8.0'
+
+mysql_databases:
+   - name: magento
+     collation: utf8_general_ci
+     encoding: utf8
+     replicate: 1
+
+mysql_users:
+   - name: magento
+     host: localhost
+     password: "{{ vault_mysql_users_magento_password }}"
+     priv: 'magento.*:ALL'
+
+mysql_replication_master: "{{ inventory_hostname }}"
+mysql_server_id: "{{ groups['magento'].index(inventory_hostname) | int + 1 }}"
+mysql_replication_role: "master"
+mysql_expire_logs_days: "2"
+mysql_max_binlog_size: "50M"
+
+mysql_replication_user: {
+  "name": "replic",
+  "password": "{{ vault_mysql_replication_user_replic_password }}"
+  }
+
+
+es_config_log4j2: "es_config_log4j2.j2"
+es_data_dirs:
+  - "/opt/elasticsearch/data"
+es_log_dir: "/opt/elasticsearch/logs"
+
+es_version: "7.9.3"
+es_heap_size: "512M"
+es_config:
+  node.name: "{{ inventory_hostname }}"
+  cluster.name: "magento"
+  cluster.initial_master_nodes: "{{ groups['magento'] }}"
+  discovery.seed_hosts: "{{ groups['magento']|difference(inventory_hostname) }}"
+  http.host: 0.0.0.0
+  http.port: 9200
+  node.data: true
+  node.master: true
+  transport.host: 0.0.0.0
+  transport.port: 9300
+  bootstrap.memory_lock: false
+es_plugins:
+  - plugin: ingest-attachment
+
+magento_base_url: ""
+magento_public_key: "{{ vault_magento_public_key }}"
+magento_private_key: "{{ vault_magento_private_key }}"
+magento_admin_password: "{{ vault_magento_admin_password }}"
+magento_crypt_key: "{{ vault_magento_crypt_key }}"

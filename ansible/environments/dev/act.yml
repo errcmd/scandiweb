@@ -1,28 +1,170 @@
-#- name: varnish
-#  hosts: varnish
-#  roles:
-#    - geerlingguy.varnish
+- name: preparation
+  hosts: all
+  tasks:
+  - name: Accept EC2 SSH host keys
+    connection: local
+    become: false
+    shell: |
+      ssh-keygen -F {{ inventory_hostname }} ||
+        ssh-keyscan -H {{ inventory_hostname }} >> ~/.ssh/known_hosts
+  - name: Update repositories cache
+    apt:
+      update_cache: yes
+
+- name: varnish
+  hosts: varnish
+  roles:
+    - geerlingguy.varnish
 
 - name: magento
   hosts: magento
   collections:
     - geerlingguy.php_roles
     - nginxinc.nginx_core
-  pre_tasks:
-#    - name: Install the official MySQL repo
-#      apt:
-#        deb: https://dev.mysql.com/get/mysql-apt-config_0.8.11-1_all.deb
-#        state: present
-#      when: ansible_os_family == 'Debian'
-#    - name: Override variables for MySQL (Debian)
-#      set_fact:
-#        mysql_packages: ['mysql-server']
-#      when: ansible_os_family == 'Debian'
   roles:
     - name: nginx
     - name: geerlingguy.php-versions
     - name: geerlingguy.php
     - name: geerlingguy.composer
     - name: damianlewis.mysql
-#    - name: geerlingguy.mysql
-#    - name: geerlingguy.php-mysql
+    - name: elastic.elasticsearch
+  post_tasks:
+    - mysql_replication:
+        mode: getprimary
+      delegate_to: "{{groups['magento'][0]}}"
+      run_once: true
+      register: master1
+    - debug:
+        msg: "{{ master1 }}"
+      delegate_to: "{{groups['magento'][0]}}"
+      run_once: true
+    - name: configure second node
+      block:
+        - name: stop slave
+          mysql_replication:
+            mode: stopreplica
+        - name: setting node1 as master
+          mysql_replication:
+            mode: changeprimary
+            primary_host: "{{ groups['magento'][0] }}"
+            primary_log_file: "{{master1.File}}"
+            primary_log_pos: "{{master1.Position | int }}"
+            primary_user: "{{mysql_replication_user.name}}"
+            primary_password: "{{mysql_replication_user.password}}"
+        - name: start slave
+          mysql_replication:
+            mode: startreplica
+      when: groups['magento'].index(inventory_hostname) | int == 1
+    - mysql_replication:
+        mode: getprimary
+      delegate_to: "{{groups['magento'][1]}}"
+      run_once: true
+      register: master2
+    - name: configure first node
+      block:
+        - name: stop slave
+          mysql_replication:
+            mode: stopreplica
+        - name: setting node2 as master
+          mysql_replication:
+            mode: changeprimary
+            primary_host: "{{ groups['magento'][1] }}"
+            primary_log_file: "{{master2.File}}"
+            primary_log_pos: "{{master2.Position | int}}"
+            primary_user: "{{mysql_replication_user.name}}"
+            primary_password: "{{mysql_replication_user.password}}"
+        - name: start slave
+          mysql_replication:
+            mode: startreplica
+      when: groups['magento'].index(inventory_hostname) | int == 0
+    - name: create www
+      file:
+        path: /var/www
+        state: directory
+    - name: create html
+      file:
+        path: /var/www/html
+        state: directory
+    - name: create config path
+      file:
+        path: /root/.config
+        state: directory
+    - name: create composer path
+      file:
+        path: /root/.config/composer
+        state: directory
+    - name: composer auth config
+      template:
+        src: composer_auth_json.j2
+        dest: /root/.config/composer/auth.json
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: check if magento project folder exist
+      stat:
+        path: /var/www/html/magento
+      register: stat_project_folder
+
+    - debug:
+        msg: "{{ stat_project_folder }}"
+
+    - name: run composer project creation
+      shell: composer create-project --repository-url=https://repo.magento.com/ magento/project-community-edition magento
+      args:
+        executable: /bin/bash
+        chdir: /var/www/html
+      become: yes
+      register: composer_create_project
+      when: not stat_project_folder.stat.exists
+      environment:
+        COMPOSER_ALLOW_SUPERUSER: 1
+
+    - debug:
+        msg: "{{ composer_create_project }}"
+
+    - name: Changing perm of magento binary
+      file: dest=/var/www/html/magento/bin/magento mode=a+x
+
+    - name: run composer installation
+      shell: bin/magento setup:install \
+        --base-url=https://{{magento_base_url}} \
+        --db-host=localhost \
+        --db-name={{mysql_databases[0].name}} \
+        --db-user={{mysql_users[0].name}} \
+        --db-password={{mysql_users[0].password}} \
+        --admin-firstname=admin \
+        --admin-lastname=admin \
+        --admin-email=admin@admin.com \
+        --admin-user=admin \
+        --admin-password={{magento_admin_password}} \
+        --language=en_US \
+        --currency=USD \
+        --timezone=America/Chicago \
+        --use-rewrites=1 \
+        --session-save=db \
+        --key={{magento_crypt_key}}
+      args:
+        chdir: /var/www/html/magento
+        executable: /bin/bash
+      become: yes
+      register: composer_magento_install
+      when: not stat_project_folder.stat.exists
+      environment:
+        COMPOSER_ALLOW_SUPERUSER: 1
+
+    - debug:
+        msg: "{{ composer_magento_install }}"
+
+    - name: changin admin portal controller
+      shell: bin/magento setup:config:set --backend-frontname="backoffice"
+      args:
+        chdir: /var/www/html/magento
+        executable: /bin/bash
+      become: yes
+      environment:
+        COMPOSER_ALLOW_SUPERUSER: 1
+
+    - file: dest=/var/www owner=www-data group=www-data recurse=yes
+    - include_role:
+        name: nginx_config
